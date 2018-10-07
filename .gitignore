@@ -106,3 +106,5 @@ venv.bak/
 \.idea/
 
 data/kagglega/
+
+k_out_dir/

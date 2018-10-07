@@ -171,7 +171,7 @@ def print_rmse(model, name, df):
 
 
 def get_linear_regressor(train):
-    myopt = tf.train.FtrlOptimizer(learning_rate=0.1)  # note the learning rate
+    myopt = tf.train.FtrlOptimizer(learning_rate=0.0003)  # note the learning rate
     estimator = tf.estimator.LinearRegressor(
         model_dir=OUTDIR,
         feature_columns=make_feature_cols(train),
@@ -193,7 +193,7 @@ def nural_network(train):
 def train_and_evaluate(traindf, testdf):
     estimator = get_linear_regressor(traindf)
     train_spec = tf.estimator.TrainSpec(
-        input_fn=make_input_fn(traindf, num_epochs=200, batch_size=50),
+        input_fn=make_input_fn(traindf, num_epochs=100, batch_size=64),
         )
 
     # exporter = tf.estimator.LatestExporter('exporter', serving_input_fn)
@@ -206,6 +206,7 @@ def train_and_evaluate(traindf, testdf):
         )
 
     tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
+    return estimator
 
 
 def read_csv_chunks(csv_path, nrows=None):
@@ -217,23 +218,34 @@ def read_csv_chunks(csv_path, nrows=None):
     return chunks
 
 
+def split_chunk(df):
+    # divide data in train and test
+    assert isinstance(df, pd.DataFrame)
+    df = df.reset_index(drop=True)
+    train_df = df.sample(frac=0.8, random_state=1, axis=0)
+    # print("train ", train_df.shape)
+    idx = np.array(df.index.values)
+    t_idx = np.array(train_df.index.values)
+    idx[t_idx] = 0
+    idx = idx != 0
+    test_df = df[idx]
+    # print("test ", test_df.shape)
+    return train_df, test_df
+
+
 OUTDIR = 'k_out_dir'
 shutil.rmtree(OUTDIR, ignore_errors=True)  # start fresh each time
 def main():
     chunks = read_csv_chunks('data/kagglega/train.csv', nrows=120000)
     i = 1
-    avg_loss = 0
     for chunk in chunks:
         try:
             print("chunk = ", i)
-            train_df = load_chunked_df(chunk)
-            train_df = data_preprocess_train(train_df)
-            if i % 2 != 0:
-                model = nural_network(train_df)
-            else:
-                avg_loss = avg_loss + print_rmse(model, 'validation', train_df)
-                print('AVG RMSE on {} dataset = {}'.format('total', np.sqrt(avg_loss/(i/4))))
-            i = i + 1
+            df = load_chunked_df(chunk)
+            df = data_preprocess_train(df)
+            train_df, test_df = split_chunk(df)
+            train_and_evaluate(train_df, test_df)
+            i = i +1
         except:
             print("Error in chunk ",i)
             i = i + 1
@@ -253,9 +265,6 @@ def main():
     print(type(predictions))
     test_df[target] = test_df[target].apply(lambda x : add_to_df(predictions))
     submission(test_df)
-
-
-
 
 
 if __name__ == "__main__":
